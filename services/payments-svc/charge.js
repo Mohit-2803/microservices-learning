@@ -9,7 +9,7 @@ const { randomUUID } = require("crypto");
 
 // Validate an amount and produce a charge result. Throws on bad input.
 function createCharge({ amount, currency = "USD" } = {}) {
-  if (typeof amount !== "number" || Number.isNaN(amount) || amount < 0) {
+  if (typeof amount !== "number" || Number.isNaN(amount) || amount <= 0) {
     throw new Error("invalid amount");
   }
   return {
