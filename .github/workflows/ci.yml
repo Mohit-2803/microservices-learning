@@ -1,0 +1,81 @@
+# ============================================================================
+#  .github/workflows/ci.yml
+#  A CI pipeline that runs AUTOMATICALLY on GitHub whenever you push or open a
+#  pull request. GitHub gives each job a fresh, clean Linux VM (a "runner").
+#
+#  Two jobs:
+#    1) unit-tests  — fast: run payments-svc's unit tests
+#    2) integration — build the images, start the whole stack, smoke-test it
+#       (only runs if unit-tests passed)
+# ============================================================================
+name: CI
+
+# WHEN does this pipeline run? (the triggers)
+on:
+  push:
+  pull_request:
+
+jobs:
+  # ---- JOB 1: fast unit tests ---------------------------------------------
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest                 # the fresh VM GitHub gives us
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4           # a prebuilt action: clones your code
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install deps & run payments-svc tests
+        working-directory: services/payments-svc
+        run: |
+          npm install
+          npm test
+
+  # ---- JOB 2: build images + smoke-test the whole stack -------------------
+  integration:
+    name: Build & smoke test
+    runs-on: ubuntu-latest
+    needs: unit-tests                       # waits for job 1; skips if it failed
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      # The runner is a CLEAN machine — gitignored files (.env, TLS certs) are
+      # NOT here. The pipeline must recreate them. This is exactly why we keep
+      # a committed .env.example template.
+      - name: Create .env from the template
+        run: cp .env.example .env
+
+      - name: Generate a self-signed TLS cert (nginx won't start without it)
+        run: |
+          mkdir -p nginx/certs
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout nginx/certs/shop.key \
+            -out  nginx/certs/shop.crt \
+            -subj "/CN=localhost"
+
+      - name: Build all images
+        run: docker compose build
+
+      - name: Start the stack
+        run: docker compose up -d
+
+      - name: Wait for services to come up
+        run: sleep 25
+
+      - name: Smoke test — products via the gateway (HTTPS, self-signed)
+        run: |
+          curl -fksS https://localhost:8443/api/products/ | grep -q "Mechanical Keyboard"
+          echo "✅ gateway + products-svc + products-db are all working together"
+
+      - name: Show container logs if the smoke test failed
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear everything down
+        if: always()                        # run even if a step above failed
+        run: docker compose down -v

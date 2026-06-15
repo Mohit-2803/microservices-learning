@@ -1,0 +1,15 @@
+# Secrets — never commit the real .env (commit .env.example instead)
+.env
+
+# TLS cert + private key (generate locally, never commit)
+nginx/certs/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Next.js build output
+.next/
+
+# Logs
+*.log

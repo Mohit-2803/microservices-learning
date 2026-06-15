@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mini-Shop · Milestone 0</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .card {
+      background: #1e293b;
+      padding: 2.5rem 3rem;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.4);
+      max-width: 560px;
+    }
+    h1 { margin: 0 0 .25rem; }
+    .tag { color: #38bdf8; font-weight: 600; letter-spacing: .05em; font-size: .8rem; }
+    code { background: #334155; padding: .15rem .4rem; border-radius: 6px; }
+    ul { line-height: 1.7; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="tag">MILESTONE 0 · NGINX ALONE</div>
+    <h1>It works. 🎉</h1>
+    <p>
+      You're looking at a static file served by <strong>nginx</strong>,
+      running inside a Docker container, reached through the port mapping
+      <code>8080 → 80</code>.
+    </p>
+    <p>What just happened, in order:</p>
+    <ul>
+      <li>Your browser asked <code>localhost:8080</code> for <code>/</code></li>
+      <li>Docker forwarded it to port <code>80</code> in the container</li>
+      <li>nginx matched <code>location /</code> and served <code>index.html</code></li>
+    </ul>
+    <p>Next up — Milestone 1: put a real Node service behind nginx.</p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,144 @@
+# ============================================================================
+#  docker-compose.yml  —  now using .env for secrets
+# ============================================================================
+#  Secrets (JWT secret + DB passwords) are NOT written here anymore. The
+#  ${PLACEHOLDER} values below are filled in by Docker Compose from the ".env"
+#  file sitting next to this one. Non-secret config (users, db names, URLs)
+#  stays inline because there's no reason to hide it.
+#
+#  See the resolved result with:   docker compose config
+#
+#  Run it:    docker compose up --build -d
+#  Stop it:   docker compose down
+#  Wipe data: docker compose down -v
+# ============================================================================
+
+services:
+  # ----- The gateway --------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: shop-nginx
+    ports:
+      - "8080:80"      # http  — redirects to https
+      - "8443:443"     # https — the real, encrypted entrance
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro      # the TLS cert + key live here
+    depends_on:
+      - auth-svc
+      - products-svc-1
+      - products-svc-2
+      - orders-svc
+      - frontend-svc
+
+  # ----- Auth service + its database ----------------------------------------
+  auth-svc:
+    build: ./services/auth-svc
+    container_name: shop-auth
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - DATABASE_URL=postgres://auth:${AUTH_DB_PASSWORD}@auth-db:5432/authdb
+    depends_on:
+      auth-db:
+        condition: service_healthy
+  auth-db:
+    image: postgres:16-alpine
+    container_name: shop-auth-db
+    environment:
+      - POSTGRES_USER=auth
+      - POSTGRES_PASSWORD=${AUTH_DB_PASSWORD}
+      - POSTGRES_DB=authdb
+    volumes:
+      - auth-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth -d authdb"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # ----- Products service: TWO replicas (nginx load-balances across them) ---
+  # Both are IDENTICAL and STATELESS, and share the SAME products-db. That's
+  # how you scale a service: run more copies, keep one database. Each replica
+  # gets the network alias "products-svc" so orders-svc's east-west call to
+  # http://products-svc:3000 still resolves (to either copy).
+  products-svc-1:
+    build: ./services/products-svc
+    container_name: shop-products-1
+    environment:
+      - DATABASE_URL=postgres://products:${PRODUCTS_DB_PASSWORD}@products-db:5432/productsdb
+    networks:
+      default:
+        aliases:
+          - products-svc
+    depends_on:
+      products-db:
+        condition: service_healthy
+  products-svc-2:
+    build: ./services/products-svc
+    container_name: shop-products-2
+    environment:
+      - DATABASE_URL=postgres://products:${PRODUCTS_DB_PASSWORD}@products-db:5432/productsdb
+    networks:
+      default:
+        aliases:
+          - products-svc
+    depends_on:
+      products-db:
+        condition: service_healthy
+  products-db:
+    image: postgres:16-alpine
+    container_name: shop-products-db
+    environment:
+      - POSTGRES_USER=products
+      - POSTGRES_PASSWORD=${PRODUCTS_DB_PASSWORD}
+      - POSTGRES_DB=productsdb
+    volumes:
+      - products-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U products -d productsdb"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # ----- Orders service (orchestrator) + its database -----------------------
+  orders-svc:
+    build: ./services/orders-svc
+    container_name: shop-orders
+    environment:
+      - DATABASE_URL=postgres://orders:${ORDERS_DB_PASSWORD}@orders-db:5432/ordersdb
+      # SAME ${JWT_SECRET} as auth-svc — single source of truth in .env
+      - JWT_SECRET=${JWT_SECRET}
+      - PRODUCTS_URL=http://products-svc:3000
+      - PAYMENTS_URL=http://payments-svc:3000
+    depends_on:
+      orders-db:
+        condition: service_healthy
+  orders-db:
+    image: postgres:16-alpine
+    container_name: shop-orders-db
+    environment:
+      - POSTGRES_USER=orders
+      - POSTGRES_PASSWORD=${ORDERS_DB_PASSWORD}
+      - POSTGRES_DB=ordersdb
+    volumes:
+      - orders-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orders -d ordersdb"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # ----- Payments service (internal only: no db, no public route) -----------
+  payments-svc:
+    build: ./services/payments-svc
+    container_name: shop-payments
+
+  # ----- Frontend (Next.js) -------------------------------------------------
+  frontend-svc:
+    build: ./frontend
+    container_name: shop-frontend
+
+volumes:
+  auth-db-data:
+  products-db-data:
+  orders-db-data:

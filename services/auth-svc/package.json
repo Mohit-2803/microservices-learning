@@ -1,0 +1,14 @@
+{
+  "name": "auth-svc",
+  "version": "1.0.0",
+  "description": "Authentication service — issues JWTs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1"
+  }
+}
