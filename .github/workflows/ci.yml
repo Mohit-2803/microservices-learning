@@ -79,3 +79,57 @@ jobs:
       - name: Tear everything down
         if: always()                        # run even if a step above failed
         run: docker compose down -v
+
+  # ---- JOB 3: publish the payments-svc image to GHCR (our first CD step) ---
+  #  Jobs 1-2 were CI: they proved the code works. This is CD: it produces a
+  #  shippable ARTIFACT. For a Docker project that artifact is a container
+  #  IMAGE, and we publish it to a REGISTRY so any machine can `pull` the exact
+  #  same bytes instead of rebuilding. We use GitHub's own registry, ghcr.io
+  #  (free, lives right next to this repo). We start with ONE service to learn
+  #  the moving parts; we'll generalize to the rest later.
+  publish:
+    name: Publish payments-svc image
+    runs-on: ubuntu-latest
+    needs: integration                      # only ship if tests + smoke test passed
+
+    # Only publish on a real push to main. We do NOT publish on pull requests
+    # or feature branches — you don't want every experiment (or a PR from a
+    # fork) pushing images to your registry.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    # Least privilege: each run gets an auto-generated GITHUB_TOKEN. By default
+    # it canNOT write packages, so we explicitly grant just that one permission.
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      # Log in to GHCR. This action is just a wrapper around `docker login
+      # ghcr.io`: the username is whoever/whatever triggered the run, and the
+      # password is the temporary GITHUB_TOKEN (no secret for you to manage).
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # GHCR image names must be ALL lowercase, but your owner is "Mohit-2803"
+      # (capital M) — a raw ghcr.io/Mohit-2803/... is an INVALID reference and
+      # docker would reject it. So we lowercase the owner into an env var and
+      # build the full image name: ghcr.io/<owner>/payments-svc
+      - name: Work out the (lowercase) image name
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE=ghcr.io/$OWNER/payments-svc" >> "$GITHUB_ENV"
+
+      # Build just the payments-svc image from its folder, tag it :latest, and
+      # push it. (Later steps: add a git-SHA tag, then the other services.)
+      - name: Build & push the image
+        run: |
+          docker build -t "$IMAGE:latest" ./services/payments-svc
+          docker push "$IMAGE:latest"
+          echo "✅ pushed $IMAGE:latest"
