@@ -126,10 +126,18 @@ jobs:
           OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "IMAGE=ghcr.io/$OWNER/payments-svc" >> "$GITHUB_ENV"
 
-      # Build just the payments-svc image from its folder, tag it :latest, and
-      # push it. (Later steps: add a git-SHA tag, then the other services.)
+      # Build the payments-svc image and tag it TWICE:
+      #   :latest          — a moving label, always the newest push to main
+      #   :<full git SHA>  — an immutable, unique handle for THIS exact commit
+      # We push both. :latest is convenient; the SHA tag is what lets you say
+      # "deploy/roll back to exactly that commit's image". (github.sha is the
+      # 40-char commit hash GitHub injects for this run.)
       - name: Build & push the image
         run: |
-          docker build -t "$IMAGE:latest" ./services/payments-svc
+          docker build \
+            -t "$IMAGE:latest" \
+            -t "$IMAGE:${{ github.sha }}" \
+            ./services/payments-svc
           docker push "$IMAGE:latest"
-          echo "✅ pushed $IMAGE:latest"
+          docker push "$IMAGE:${{ github.sha }}"
+          echo "✅ pushed $IMAGE:latest and $IMAGE:${{ github.sha }}"
